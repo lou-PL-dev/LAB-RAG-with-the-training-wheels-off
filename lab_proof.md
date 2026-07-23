@@ -68,16 +68,37 @@ For any use or reproduction of photos or other...
 
 ## Grounding risk / limitation
 
-The system produced a plausible but potentially unsupported answer risk mainly
-around **corpus imbalance**: the EU HLEG document accounts for ~87% of all
-chunks (156k of 178k total characters), so retrieval is structurally biased
-toward it even when the UNESCO document contains equally relevant content.
-A query whose best answer lives primarily in the smaller document could
-retrieve HLEG chunks with moderate similarity instead of the more relevant
-(but underrepresented) UNESCO passage — producing an answer that sounds
-grounded but omits the more accurate source.
+Initial hypothesis: corpus imbalance (the EU HLEG document accounts for
+~87% of all chunks — 156k of 178k total characters) would cause the
+smaller UNESCO document to be structurally under-retrieved.
 
-The out-of-scope test (Case 2) confirms the system correctly refuses to
-answer when no relevant evidence is retrieved (similarity scores ~0.12 vs.
-~0.70 for the grounded case), rather than hallucinating a plausible-sounding
-answer from unrelated context.
+This hypothesis was tested directly and **did not hold up**. Queries using
+UNESCO-specific terminology (e.g. "Readiness Assessment Methodology",
+"AI Ethics Experts Without Borders network", "social scoring or mass
+surveillance") consistently retrieved UNESCO chunks in the top position,
+despite being outnumbered ~7:1 by HLEG chunks. Cosine similarity correctly
+prioritized relevance over source volume.
+
+A harder test surfaced the **actual** grounding risk: short factual details
+embedded inside thematically broader sentences are hard to retrieve, regardless
+of source document. For the query "How many Member States adopted the
+Recommendation?", the chunk containing the correct answer ("adopted by all
+193 Member States in November 2021") ranked **12th out of 398** chunks
+(score 0.336), well below the ~0.65-0.75 scores seen for well-matched
+conceptual queries. The reason: the embedding represents the *whole
+sentence's* meaning (UNESCO publishing a standard amid urgency and
+marginalized groups), not the isolated fact the query is asking for, so a
+query targeting one specific detail competes against, and loses to, chunks
+whose overall topic is a closer thematic match.
+
+A test increasing the surrounding context window (250 → 1000
+characters) only raised the score modestly (0.336 → 0.365), confirming
+chunk size is a contributing factor but not the dominant cause. The
+underlying issue: cosine similarity matches on overall sentence meaning,
+so a query targeting one precise fact competes against and loses to
+chunks whose broader topic is a closer thematic match. Two low-effort
+fixes would likely help: hybrid search (adding keyword/BM25 matching
+alongside semantic search, so an exact term like "Member States" is
+caught even when embedding similarity is weak), and reranking (retrieving
+a wider top-k and letting a cross-encoder rerank it — the correct chunk
+was already at rank 12, just outside a narrow top-3 window).
